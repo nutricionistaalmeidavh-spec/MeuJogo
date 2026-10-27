@@ -159,3 +159,13 @@ export function disassembleVehicle(state:GameState):GameState{
   next.vehicle=null;
   return next;
 }
+
+export const STARTER_CACHE_ID='salvage:workshop-wreck-01';
+export function claimStarterCache(state:GameState):GameState{
+  if(state.collected.includes(STARTER_CACHE_ID))return state;
+  const next=copy(state);
+  next.collected.push(STARTER_CACHE_ID);
+  next.inventory.metal+=CAR_KIT_COST.metal;
+  next.inventory.copper+=CAR_KIT_COST.copper;
+  return next;
+}
