@@ -514,7 +514,7 @@ function frame(time:number){
     const steer=(driveHeld.left||keys.has('a')||keys.has('arrowleft')?-1:0)+(driveHeld.right||keys.has('d')||keys.has('arrowright')?1:0);
     rig.setInput({throttle,steer,brake:driveHeld.brake||keys.has(' ')||mode!=='drive'});
     rig.stepFrame(dt);
-    if(world.update(rig.x,rig.z,state.collected))rig.refreshTerrain(world.terrainMeshes(),world.obstaclesNear(rig.x,rig.z,64));
+    if(mode==='drive'&&world.update(rig.x,rig.z,state.collected))rig.refreshTerrain(world.terrainMeshes(),world.obstaclesNear(rig.x,rig.z,64));
     if(mode==='drive'){
       autosaveDrive+=dt;
       if(autosaveDrive>6){autosaveDrive=0;queueSave();}
