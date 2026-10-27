@@ -594,6 +594,8 @@ function frame(time:number){
   }
   if(mode==='drive'&&rig){
     get('drive-hud').dataset.carY=rig.y.toFixed(2);
+    get('drive-hud').dataset.physicsMass=rig.mass.toFixed(2);
+    get('drive-hud').dataset.verticalSpeed=rig.verticalSpeed.toFixed(2);
     get('drive-hud').dataset.wheelGround=String(rig.contacts.filter(c=>c.grounded).length);
     get('drive-hud').dataset.gas=String(driveHeld.gas);
     get('speed').textContent=String(rig.kmh);
