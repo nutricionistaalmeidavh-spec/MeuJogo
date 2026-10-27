@@ -6,7 +6,7 @@ export function wheelSpring(compression:number,verticalSpeed:number):number{
 /** Each spring may carry only a safe fraction of the actual Rapier body weight. */
 export function suspensionSupportForce(compression:number,verticalSpeed:number,bodyMass:number):number{
   if(!Number.isFinite(bodyMass)||bodyMass<=0)return 0;
-  const maxPerWheel=bodyMass*9.81*.4;
+  const maxPerWheel=bodyMass*9.81*.27;
   return clamp(wheelSpring(compression,verticalSpeed),0,maxPerWheel);
 }
 export function motorForce(throttle:number,speed:number,charge:number,health:number):number{
