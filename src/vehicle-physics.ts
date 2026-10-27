@@ -92,8 +92,8 @@ export class VehicleRig {
     this.driver=enabled;
     this.input={throttle:0,steer:0,brake:!enabled};
     this.currentSpeed=0;
-    // Fixed bodies stay in the garage without sliding, falling or accumulating impulses.
-    this.body.setBodyType(enabled?RAPIER.RigidBodyType.Dynamic:RAPIER.RigidBodyType.Fixed,true);
+    // Pausing the integration while unoccupied keeps the original dynamic mass and motor.
+    // Switching a rigid body to Fixed and back can invalidate its running suspension contacts.
     if(!enabled){
       this.body.setLinvel({x:0,y:0,z:0},true);
       this.body.setAngvel({x:0,y:0,z:0},true);
