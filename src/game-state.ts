@@ -77,7 +77,8 @@ export function restoreState(raw:unknown):GameState {
   }
   if(isRecord(raw.vehicle)&&Array.isArray(raw.vehicle.partIds)){
     const v=raw.vehicle;
-    const partIds=Array.from(new Set(v.partIds.filter((id):id is string=>typeof id==='string'&&result.parts.some(p=>p.id===id)))).slice(0,48);
+    const rawIds=v.partIds as unknown[];
+    const partIds:string[]=Array.from(new Set(rawIds.filter((id:unknown):id is string=>typeof id==='string'&&result.parts.some(p=>p.id===id)))).slice(0,48);
     if(partIds.length>=7&&partIds.filter(id=>result.parts.some(p=>p.id===id&&p.kind==='wheel')).length>=3){
       const originPart=result.parts.find(p=>partIds.includes(p.id)&&(p.kind==='beam'||p.kind==='plate'));
       if(originPart){
