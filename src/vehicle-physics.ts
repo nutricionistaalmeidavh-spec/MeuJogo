@@ -4,7 +4,7 @@ import {heightAt,chunkCoord,type Obstacle} from './world';
 import {type GameState,type VehicleSave} from './game-state';
 import {partMesh} from './build-view';
 import {vehicleMass} from './vehicle-state';
-import {wheelSpring,motorForce,steerStrength,energyUsed,wheelGrip} from './vehicle-dynamics';
+import {suspensionSupportForce,motorForce,steerStrength,energyUsed,wheelGrip} from './vehicle-dynamics';
 
 const STEP=1/60;
 const WHEEL_RADIUS=.52;
@@ -83,6 +83,8 @@ export class VehicleRig {
   get y(){return this.body.translation().y;}
   get z(){return this.body.translation().z;}
   get kmh(){return Math.round(Math.abs(this.currentSpeed)*3.6);}
+  get mass(){return this.body.mass();}
+  get verticalSpeed(){return this.body.linvel().y;}
   get health(){return this.data.health;}
   get charge(){return this.data.charge;}
   get wheels(){return this.wheelMeshes.size-this.data.detachedWheelIds.length;}
@@ -156,11 +158,14 @@ export class VehicleRig {
     this.syncTransform();
     // A missing/late terrain collider must never make the user's vehicle vanish below the map.
     if(!Number.isFinite(this.y)||this.y<heightAt(this.x,this.z)-2.5 ||
+       this.y>heightAt(this.x,this.z)+12 ||
        Math.abs(this.x)>10000||Math.abs(this.z)>10000)this.reset();
   }
   private fixedStep(dt:number){
     const input=this.driver?this.input:{throttle:0,steer:0,brake:true};
     const position=this.body.translation(),rotation=this.body.rotation(),vel=this.body.linvel(),angvel=this.body.angvel();
+    const physicalMass=Math.max(.01,this.body.mass());
+    const motorScale=Math.min(1,physicalMass/Math.max(1,this.bodyMass));
     const quat=new THREE.Quaternion(rotation.x,rotation.y,rotation.z,rotation.w);
     const forward=new THREE.Vector3(0,0,1).applyQuaternion(quat);
     const lateral=new THREE.Vector3(1,0,0).applyQuaternion(quat);
@@ -179,7 +184,7 @@ export class VehicleRig {
       const velocityAtWheel=new THREE.Vector3(vel.x,vel.y,vel.z)
         .add(new THREE.Vector3(angvel.x,angvel.y,angvel.z).cross(worldOffset));
       const active=!detached.has(wheelIds[i]);
-      const spring=active?wheelSpring(compression,velocityAtWheel.y):0;
+      const spring=active?suspensionSupportForce(compression,velocityAtWheel.y,physicalMass):0;
       const contact={x:anchor.x,y:surface+WHEEL_RADIUS,z:anchor.z,compression,grounded:spring>0};
       this.contacts.push(contact);
       if(!spring)continue;
@@ -187,20 +192,20 @@ export class VehicleRig {
       this.body.addForceAtPoint({x:0,y:spring,z:0},anchor,true);
       const tractionScale=wheelGrip(this.wheels);
       const lateralVelocity=velocityAtWheel.dot(lateral);
-      const sideForce=clamp(-lateralVelocity*this.bodyMass*2.2,-spring*.9,spring*.9)*tractionScale;
+      const sideForce=clamp(-lateralVelocity*physicalMass*2.2,-spring*.9,spring*.9)*tractionScale;
       this.body.addForceAtPoint(
         {x:lateral.x*sideForce,y:0,z:lateral.z*sideForce},anchor,true
       );
       if(input.brake){
-        const resist=clamp(-velocityAtWheel.dot(forward)*this.bodyMass*1.4,-spring*.9,spring*.9);
+        const resist=clamp(-velocityAtWheel.dot(forward)*physicalMass*1.4,-spring*.9,spring*.9);
         this.body.addForceAtPoint({x:forward.x*resist,y:0,z:forward.z*resist},anchor,true);
       }else if(i>=2){
-        const drive=motorForce(input.throttle,this.currentSpeed,this.data.charge,this.data.health)*tractionScale*.5;
+        const drive=motorForce(input.throttle,this.currentSpeed,this.data.charge,this.data.health)*tractionScale*.5*motorScale;
         this.body.addForceAtPoint({x:forward.x*drive,y:0,z:forward.z*drive},anchor,true);
       }
     }
     if(grounded>0){
-      const steering=input.steer*steerStrength(this.currentSpeed)*this.bodyMass*3.2*clamp(this.currentSpeed/5,-1,1);
+      const steering=input.steer*steerStrength(this.currentSpeed)*physicalMass*3.2*clamp(this.currentSpeed/5,-1,1);
       this.body.addTorque({x:0,y:steering,z:0},true);
       const drag=-this.currentSpeed*Math.abs(this.currentSpeed)*.8;
       this.body.addForce({x:forward.x*drag,y:0,z:forward.z*drag},true);
