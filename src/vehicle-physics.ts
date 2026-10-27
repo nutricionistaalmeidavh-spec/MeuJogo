@@ -155,11 +155,26 @@ export class VehicleRig {
       this.fixedStep(STEP);
       this.accumulator-=STEP;iterations++;
     }
+    this.stabilizeOnTerrain();
     this.syncTransform();
-    // A missing/late terrain collider must never make the user's vehicle vanish below the map.
-    if(!Number.isFinite(this.y)||this.y<heightAt(this.x,this.z)-2.5 ||
-       this.y>heightAt(this.x,this.z)+12 ||
-       Math.abs(this.x)>10000||Math.abs(this.z)>10000)this.reset();
+  }
+  /**
+   * Phase 3 vehicle safety: soft wheel suspension remains physical, but extreme
+   * vertical impulses from triangulated ground are corrected before the car
+   * leaves the visible scene. Keep horizontal velocity for normal driving.
+   */
+  private stabilizeOnTerrain(){
+    const p=this.body.translation(),v=this.body.linvel();
+    if(!Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z)||
+       Math.abs(p.x)>10000||Math.abs(p.z)>10000){this.reset();return;}
+    const ground=heightAt(p.x,p.z),bottom=ground+.65,top=ground+1.8;
+    if(p.y<bottom||p.y>top||Math.abs(v.y)>3){
+      const safeY=ground+1.25;
+      this.body.setTranslation({x:p.x,y:safeY,z:p.z},true);
+      this.body.setLinvel({x:v.x,y:0,z:v.z},true);
+      const angular=this.body.angvel();
+      this.body.setAngvel({x:0,y:angular.y,z:0},true);
+    }
   }
   private fixedStep(dt:number){
     const input=this.driver?this.input:{throttle:0,steer:0,brake:true};
