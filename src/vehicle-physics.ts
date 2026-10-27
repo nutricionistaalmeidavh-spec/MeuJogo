@@ -76,6 +76,8 @@ export class VehicleRig {
     this.scene.add(this.group);
     this.applyWheelVisibility();
     this.syncTransform();
+    // Until occupied the parked buggy is fixed; the physics motor cannot silently roll it away.
+    this.setDriver(false);
   }
   get x(){return this.body.translation().x;}
   get y(){return this.body.translation().y;}
@@ -86,7 +88,17 @@ export class VehicleRig {
   get wheels(){return this.wheelMeshes.size-this.data.detachedWheelIds.length;}
   get isDriving(){return this.driver;}
   get canDrive(){return this.wheels>=3&&this.data.health>0&&this.data.charge>0;}
-  setDriver(enabled:boolean){this.driver=enabled;this.input={throttle:0,steer:0,brake:!enabled};}
+  setDriver(enabled:boolean){
+    this.driver=enabled;
+    this.input={throttle:0,steer:0,brake:!enabled};
+    this.currentSpeed=0;
+    // Fixed bodies stay in the garage without sliding, falling or accumulating impulses.
+    this.body.setBodyType(enabled?RAPIER.RigidBodyType.Dynamic:RAPIER.RigidBodyType.Fixed,true);
+    if(!enabled){
+      this.body.setLinvel({x:0,y:0,z:0},true);
+      this.body.setAngvel({x:0,y:0,z:0},true);
+    }
+  }
   setInput(input:DriveInput){this.input=input;}
   updateData(saved:VehicleSave){
     this.data={...saved,partIds:[...saved.partIds],detachedWheelIds:[...saved.detachedWheelIds]};
@@ -134,6 +146,7 @@ export class VehicleRig {
   }
   stepFrame(dt:number){
     if(!Number.isFinite(dt)||dt<=0)return;
+    if(!this.driver){this.syncTransform();return;}
     this.accumulator=Math.min(.15,this.accumulator+Math.min(dt,.06));
     let iterations=0;
     while(this.accumulator>=STEP&&iterations<5){
@@ -141,7 +154,9 @@ export class VehicleRig {
       this.accumulator-=STEP;iterations++;
     }
     this.syncTransform();
-    if(this.y<-30||Math.abs(this.x)>10000||Math.abs(this.z)>10000)this.reset();
+    // A missing/late terrain collider must never make the user's vehicle vanish below the map.
+    if(!Number.isFinite(this.y)||this.y<heightAt(this.x,this.z)-2.5 ||
+       Math.abs(this.x)>10000||Math.abs(this.z)>10000)this.reset();
   }
   private fixedStep(dt:number){
     const input=this.driver?this.input:{throttle:0,steer:0,brake:true};
@@ -208,6 +223,18 @@ export class VehicleRig {
     const yaw=Math.atan2(2*(q.w*q.y+q.x*q.z),1-2*(q.y*q.y+q.z*q.z));
     return {...this.data,x:p.x,y:p.y-.35,z:p.z,yaw,
       partIds:[...this.data.partIds],detachedWheelIds:[...this.data.detachedWheelIds]};
+  }
+  /** Bring a lost or distant vehicle beside the player without resetting its resources or health. */
+  recoverBeside(x:number,z:number){
+    if(!Number.isFinite(x)||!Number.isFinite(z))return;
+    const px=Math.max(-9995,Math.min(9995,x)),pz=Math.max(-9995,Math.min(9995,z));
+    this.body.setTranslation({x:px,y:heightAt(px,pz)+1.55,z:pz},true);
+    const yaw=this.data.yaw;
+    this.body.setRotation({x:0,y:Math.sin(yaw/2),z:0,w:Math.cos(yaw/2)},true);
+    this.body.setLinvel({x:0,y:0,z:0},true);
+    this.body.setAngvel({x:0,y:0,z:0},true);
+    this.key='';
+    this.syncTransform();
   }
   reset(){
     const p=this.body.translation(),surface=heightAt(p.x,p.z);
