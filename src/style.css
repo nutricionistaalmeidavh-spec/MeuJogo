@@ -103,3 +103,44 @@ body.drive-mode #hint{top:calc(200px + env(safe-area-inset-top))}
   #drive-controls button{width:49px}
   #drive-hud{min-width:0}
 }
+
+
+/* Vehicle recovery: preserve visibility even when a saved buggy is far away. */
+#vehicle-panel{
+  position:absolute;
+  top:calc(136px + env(safe-area-inset-top));
+  left:12px;
+  width:min(274px,calc(100vw - 125px));
+  padding:10px 12px;
+  pointer-events:auto;
+  font-size:12px;
+  border-color:#f3d28c80;
+}
+#vehicle-panel strong{color:#ffe3a2}
+#vehicle-distance{font-variant-numeric:tabular-nums;color:#e7eed7}
+.vehicle-buttons{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.vehicle-buttons button{flex:1;white-space:normal;min-height:39px;padding:7px;font-size:11px}
+#locate-car{background:#335e64;border-color:#91cbd5}
+#recover-car{background:#7c623d;border-color:#dfc58e}
+#car-marker{
+  position:absolute;
+  left:50%;top:46%;transform:translate(-50%,-110%);
+  padding:7px 10px;
+  color:#191c18;background:#f6d988;
+  border:2px solid #fff4d5;
+  border-radius:999px;
+  box-shadow:0 0 0 4px #8d6a2360,0 6px 15px #0008;
+  font-weight:800;font-size:12px;letter-spacing:.025em;
+  pointer-events:none;white-space:nowrap;
+  z-index:5;
+}
+#car-marker::after{content:'';position:absolute;top:100%;left:calc(50% - 7px);
+  border-left:7px solid transparent;border-right:7px solid transparent;border-top:9px solid #f6d988}
+body.drive-mode #vehicle-panel,
+body.build-mode #vehicle-panel{display:none}
+@media(max-width:650px){
+ #vehicle-panel{top:calc(108px + env(safe-area-inset-top));width:min(220px,calc(100vw - 128px));left:10px;padding:8px}
+ .vehicle-buttons{gap:5px}
+ .vehicle-buttons button{font-size:10px;padding:6px 3px;min-height:42px}
+ #car-marker{font-size:11px;padding:6px 8px}
+}

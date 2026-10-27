@@ -4,7 +4,7 @@ import {heightAt,chunkCoord,type Obstacle} from './world';
 import {type GameState,type VehicleSave} from './game-state';
 import {partMesh} from './build-view';
 import {vehicleMass} from './vehicle-state';
-import {wheelSpring,motorForce,steerStrength,energyUsed,wheelGrip} from './vehicle-dynamics';
+import {suspensionSupportForce,motorForce,steerStrength,energyUsed,wheelGrip} from './vehicle-dynamics';
 
 const STEP=1/60;
 const WHEEL_RADIUS=.52;
@@ -76,17 +76,33 @@ export class VehicleRig {
     this.scene.add(this.group);
     this.applyWheelVisibility();
     this.syncTransform();
+    // Until occupied the parked buggy is fixed; the physics motor cannot silently roll it away.
+    this.setDriver(false);
   }
   get x(){return this.body.translation().x;}
   get y(){return this.body.translation().y;}
   get z(){return this.body.translation().z;}
   get kmh(){return Math.round(Math.abs(this.currentSpeed)*3.6);}
+  get mass(){return this.body.mass();}
+  get verticalSpeed(){return this.body.linvel().y;}
   get health(){return this.data.health;}
   get charge(){return this.data.charge;}
   get wheels(){return this.wheelMeshes.size-this.data.detachedWheelIds.length;}
   get isDriving(){return this.driver;}
   get canDrive(){return this.wheels>=3&&this.data.health>0&&this.data.charge>0;}
-  setDriver(enabled:boolean){this.driver=enabled;this.input={throttle:0,steer:0,brake:!enabled};}
+  setDriver(enabled:boolean){
+    this.driver=enabled;
+    this.input={throttle:0,steer:0,brake:!enabled};
+    this.currentSpeed=0;
+    // Pausing the integration while unoccupied keeps the original dynamic mass and motor.
+    // Switching a rigid body to Fixed and back can invalidate its running suspension contacts.
+    if(!enabled){
+      this.body.resetForces(true);
+      this.body.resetTorques(true);
+      this.body.setLinvel({x:0,y:0,z:0},true);
+      this.body.setAngvel({x:0,y:0,z:0},true);
+    }
+  }
   setInput(input:DriveInput){this.input=input;}
   updateData(saved:VehicleSave){
     this.data={...saved,partIds:[...saved.partIds],detachedWheelIds:[...saved.detachedWheelIds]};
@@ -134,18 +150,43 @@ export class VehicleRig {
   }
   stepFrame(dt:number){
     if(!Number.isFinite(dt)||dt<=0)return;
+    if(!this.driver){this.syncTransform();return;}
     this.accumulator=Math.min(.15,this.accumulator+Math.min(dt,.06));
     let iterations=0;
     while(this.accumulator>=STEP&&iterations<5){
       this.fixedStep(STEP);
       this.accumulator-=STEP;iterations++;
     }
+    this.stabilizeOnTerrain();
     this.syncTransform();
-    if(this.y<-30||Math.abs(this.x)>10000||Math.abs(this.z)>10000)this.reset();
+  }
+  /**
+   * Phase 3 vehicle safety: soft wheel suspension remains physical, but extreme
+   * vertical impulses from triangulated ground are corrected before the car
+   * leaves the visible scene. Keep horizontal velocity for normal driving.
+   */
+  private stabilizeOnTerrain(){
+    const p=this.body.translation(),v=this.body.linvel();
+    if(!Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z)||
+       Math.abs(p.x)>10000||Math.abs(p.z)>10000){this.reset();return;}
+    const ground=heightAt(p.x,p.z),bottom=ground+.65,top=ground+1.8;
+    if(p.y<bottom||p.y>top||Math.abs(v.y)>3){
+      const safeY=ground+1.25;
+      this.body.setTranslation({x:p.x,y:safeY,z:p.z},true);
+      this.body.setLinvel({x:v.x,y:0,z:v.z},true);
+      const angular=this.body.angvel();
+      this.body.setAngvel({x:0,y:angular.y,z:0},true);
+    }
   }
   private fixedStep(dt:number){
+    // Rapier addForceAtPoint/addTorque ACCUMULATE until explicitly cleared.
+    // Without this, the buggy builds up permanent upward spring force and rockets away.
+    this.body.resetForces(true);
+    this.body.resetTorques(true);
     const input=this.driver?this.input:{throttle:0,steer:0,brake:true};
     const position=this.body.translation(),rotation=this.body.rotation(),vel=this.body.linvel(),angvel=this.body.angvel();
+    const physicalMass=Math.max(.01,this.body.mass());
+    const motorScale=Math.min(1,physicalMass/Math.max(1,this.bodyMass));
     const quat=new THREE.Quaternion(rotation.x,rotation.y,rotation.z,rotation.w);
     const forward=new THREE.Vector3(0,0,1).applyQuaternion(quat);
     const lateral=new THREE.Vector3(1,0,0).applyQuaternion(quat);
@@ -164,7 +205,7 @@ export class VehicleRig {
       const velocityAtWheel=new THREE.Vector3(vel.x,vel.y,vel.z)
         .add(new THREE.Vector3(angvel.x,angvel.y,angvel.z).cross(worldOffset));
       const active=!detached.has(wheelIds[i]);
-      const spring=active?wheelSpring(compression,velocityAtWheel.y):0;
+      const spring=active?suspensionSupportForce(compression,velocityAtWheel.y,physicalMass):0;
       const contact={x:anchor.x,y:surface+WHEEL_RADIUS,z:anchor.z,compression,grounded:spring>0};
       this.contacts.push(contact);
       if(!spring)continue;
@@ -172,20 +213,20 @@ export class VehicleRig {
       this.body.addForceAtPoint({x:0,y:spring,z:0},anchor,true);
       const tractionScale=wheelGrip(this.wheels);
       const lateralVelocity=velocityAtWheel.dot(lateral);
-      const sideForce=clamp(-lateralVelocity*this.bodyMass*2.2,-spring*.9,spring*.9)*tractionScale;
+      const sideForce=clamp(-lateralVelocity*physicalMass*2.2,-spring*.9,spring*.9)*tractionScale;
       this.body.addForceAtPoint(
         {x:lateral.x*sideForce,y:0,z:lateral.z*sideForce},anchor,true
       );
       if(input.brake){
-        const resist=clamp(-velocityAtWheel.dot(forward)*this.bodyMass*1.4,-spring*.9,spring*.9);
+        const resist=clamp(-velocityAtWheel.dot(forward)*physicalMass*1.4,-spring*.9,spring*.9);
         this.body.addForceAtPoint({x:forward.x*resist,y:0,z:forward.z*resist},anchor,true);
       }else if(i>=2){
-        const drive=motorForce(input.throttle,this.currentSpeed,this.data.charge,this.data.health)*tractionScale*.5;
+        const drive=motorForce(input.throttle,this.currentSpeed,this.data.charge,this.data.health)*tractionScale*.5*motorScale;
         this.body.addForceAtPoint({x:forward.x*drive,y:0,z:forward.z*drive},anchor,true);
       }
     }
     if(grounded>0){
-      const steering=input.steer*steerStrength(this.currentSpeed)*this.bodyMass*3.2*clamp(this.currentSpeed/5,-1,1);
+      const steering=input.steer*steerStrength(this.currentSpeed)*physicalMass*3.2*clamp(this.currentSpeed/5,-1,1);
       this.body.addTorque({x:0,y:steering,z:0},true);
       const drag=-this.currentSpeed*Math.abs(this.currentSpeed)*.8;
       this.body.addForce({x:forward.x*drag,y:0,z:forward.z*drag},true);
@@ -208,6 +249,18 @@ export class VehicleRig {
     const yaw=Math.atan2(2*(q.w*q.y+q.x*q.z),1-2*(q.y*q.y+q.z*q.z));
     return {...this.data,x:p.x,y:p.y-.35,z:p.z,yaw,
       partIds:[...this.data.partIds],detachedWheelIds:[...this.data.detachedWheelIds]};
+  }
+  /** Bring a lost or distant vehicle beside the player without resetting its resources or health. */
+  recoverBeside(x:number,z:number){
+    if(!Number.isFinite(x)||!Number.isFinite(z))return;
+    const px=Math.max(-9995,Math.min(9995,x)),pz=Math.max(-9995,Math.min(9995,z));
+    this.body.setTranslation({x:px,y:heightAt(px,pz)+1.55,z:pz},true);
+    const yaw=this.data.yaw;
+    this.body.setRotation({x:0,y:Math.sin(yaw/2),z:0,w:Math.cos(yaw/2)},true);
+    this.body.setLinvel({x:0,y:0,z:0},true);
+    this.body.setAngvel({x:0,y:0,z:0},true);
+    this.key='';
+    this.syncTransform();
   }
   reset(){
     const p=this.body.translation(),surface=heightAt(p.x,p.z);
