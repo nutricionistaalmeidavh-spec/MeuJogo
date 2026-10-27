@@ -97,6 +97,8 @@ export class VehicleRig {
     // Pausing the integration while unoccupied keeps the original dynamic mass and motor.
     // Switching a rigid body to Fixed and back can invalidate its running suspension contacts.
     if(!enabled){
+      this.body.resetForces(true);
+      this.body.resetTorques(true);
       this.body.setLinvel({x:0,y:0,z:0},true);
       this.body.setAngvel({x:0,y:0,z:0},true);
     }
@@ -177,6 +179,10 @@ export class VehicleRig {
     }
   }
   private fixedStep(dt:number){
+    // Rapier addForceAtPoint/addTorque ACCUMULATE until explicitly cleared.
+    // Without this, the buggy builds up permanent upward spring force and rockets away.
+    this.body.resetForces(true);
+    this.body.resetTorques(true);
     const input=this.driver?this.input:{throttle:0,steer:0,brake:true};
     const position=this.body.translation(),rotation=this.body.rotation(),vel=this.body.linvel(),angvel=this.body.angvel();
     const physicalMass=Math.max(.01,this.body.mass());
