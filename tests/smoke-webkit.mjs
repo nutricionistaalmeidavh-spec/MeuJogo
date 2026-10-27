@@ -61,6 +61,8 @@ try {
       buttonHeld:document.querySelector('#pedal-gas')?.classList.contains('held'),
       charge:document.querySelector('#charge')?.textContent,
       carY:document.querySelector('#drive-hud')?.getAttribute('data-car-y'),
+      physicsMass:document.querySelector('#drive-hud')?.getAttribute('data-physics-mass'),
+      verticalSpeed:document.querySelector('#drive-hud')?.getAttribute('data-vertical-speed'),
       grounded:document.querySelector('#drive-hud')?.getAttribute('data-wheel-ground'),
       input:document.querySelector('#drive-hud')?.getAttribute('data-gas'),
       mode:document.body.className
@@ -68,6 +70,7 @@ try {
     console.log('Drive initially:',JSON.stringify(await telemetry()));
     await page.waitForTimeout(1500);
     console.log('Drive after 1.5 s:',JSON.stringify(await telemetry()));
+    assert.ok(Number((await telemetry()).carY)<14,'Buggy flew out of the scene from unstable suspension');
     try {
       await page.waitForFunction(()=>Number(document.querySelector('#speed')?.textContent||'0')>2,null,{timeout:7000});
     } catch(error) {
