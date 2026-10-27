@@ -35,7 +35,8 @@ export function scrapSpawns(cx:number,cz:number):ScrapSpawn[] {
   }
   return spawns;
 }
-type Chunk={group:THREE.Group;terrain:THREE.Mesh;scrapIds:string[]};
+export interface Obstacle {id:string;x:number;y:number;z:number;radius:number}
+type Chunk={group:THREE.Group;terrain:THREE.Mesh;scrapIds:string[];obstacleIds:string[]};
 export interface ScrapObject {id:string;resource:Resource;mesh:THREE.Mesh;position:THREE.Vector3}
 const groundMat=new THREE.MeshStandardMaterial({color:0x68876b,flatShading:true,roughness:1});
 const dirtMat=new THREE.MeshStandardMaterial({color:0x8c8762,flatShading:true,roughness:1});
@@ -51,6 +52,7 @@ const scrapGeo=new THREE.DodecahedronGeometry(.37,0);
 export class ChunkWorld {
   private chunks=new Map<string,Chunk>();
   readonly scraps=new Map<string,ScrapObject>();
+  readonly obstacles=new Map<string,Obstacle>();
   private center='';
   constructor(private scene:THREE.Scene){}
   update(x:number,z:number,collected:readonly string[]){
@@ -67,6 +69,7 @@ export class ChunkWorld {
       this.scene.remove(chunk.group);
       chunk.terrain.geometry.dispose();
       chunk.scrapIds.forEach(scrapId=>this.scraps.delete(scrapId));
+      chunk.obstacleIds.forEach(obstacleId=>this.obstacles.delete(obstacleId));
       this.chunks.delete(id);
     }
     return true;
@@ -85,17 +88,22 @@ export class ChunkWorld {
     const terrain=new THREE.Mesh(geo,Math.sin(cx*.7+cz*.4)>0.6?dirtMat:groundMat);
     terrain.position.set(centerX,0,centerZ);terrain.receiveShadow=true;group.add(terrain);
     const random=mulberry32(seedFor(cx,cz));
+    const obstacleIds:string[]=[];
     for(let i=0;i<12;i++){
       const x=x0+2+random()*(CHUNK_SIZE-4),z=z0+2+random()*(CHUNK_SIZE-4);
       if(Math.hypot(x,z)<8)continue;
       const y=heightAt(x,z);
       if(i%3===0){
         const trunk=new THREE.Mesh(trunkGeo,trunkMat);trunk.position.set(x,y+.57,z);group.add(trunk);
+        const id=key+':tree-'+i;obstacleIds.push(id);
+        this.obstacles.set(id,{id,x,y:y+.75,z,radius:.33});
         const crown=new THREE.Mesh(crownGeo,crownMat);
         crown.position.set(x,y+2.15,z);crown.castShadow=true;group.add(crown);
       }else{
         const rock=new THREE.Mesh(rockGeo,rockMat);
         rock.position.set(x,y+.17,z);rock.scale.set(1,.5,1);group.add(rock);
+        const id=key+':rock-'+i;obstacleIds.push(id);
+        this.obstacles.set(id,{id,x,y:y+.22,z,radius:.48});
       }
     }
     const scrapIds:string[]=[];
@@ -108,7 +116,7 @@ export class ChunkWorld {
       scrapIds.push(item.id);
       this.scraps.set(item.id,{...item,mesh,position:mesh.position});
     }
-    this.scene.add(group);this.chunks.set(key,{group,terrain,scrapIds});
+    this.scene.add(group);this.chunks.set(key,{group,terrain,scrapIds,obstacleIds});
   }
   collect(id:string){
     const item=this.scraps.get(id);if(!item)return;
@@ -127,9 +135,12 @@ export class ChunkWorld {
     return closest;
   }
   terrainMeshes():THREE.Mesh[]{return [...this.chunks.values()].map(c=>c.terrain);}
+  obstaclesNear(x:number,z:number,radius=60):Obstacle[]{
+    return [...this.obstacles.values()].filter(o=>Math.hypot(o.x-x,o.z-z)<radius);
+  }
   get loadedChunkCount(){return this.chunks.size;}
   clear(){
     for(const c of this.chunks.values()){this.scene.remove(c.group);c.terrain.geometry.dispose();}
-    this.chunks.clear();this.scraps.clear();this.center='';
+    this.chunks.clear();this.scraps.clear();this.obstacles.clear();this.center='';
   }
 }

@@ -36,6 +36,40 @@ try {
   const blueprint=JSON.parse(await readFile(await download.path(),'utf8'));
   assert.equal(blueprint.format,'meujogo-blueprint');
   assert.equal(blueprint.parts.length,1,'construction did not persist on reload');
+  await page.locator('#close-build').click();
+  await page.locator('#salvage-cache').click();
+  assert.equal(await page.locator('#metal').textContent(),'24','one-time scrap wreck recovery failed');
+  assert.equal(await page.locator('#copper').textContent(),'5','copper starter stock missing');
+  assert.equal(await page.locator('#salvage-cache').isHidden(),true,'salvage cache can be collected repeatedly');
+  await page.locator('#toggle-build').click();
+  await page.locator('#quick-buggy').click();
+  await page.locator('#builder').waitFor({state:'hidden'});
+  await page.locator('#ride').waitFor({state:'visible'});
+  assert.equal(await page.locator('#metal').textContent(),'0','car fabrication did not spend metal');
+  assert.equal(await page.locator('#copper').textContent(),'0','car fabrication did not spend copper');
+  await page.screenshot({path:'webkit-parked-buggy.png'});
+  await page.locator('#ride').click();
+  await page.locator('#drive-controls').waitFor({state:'visible'});
+  const gasBox=await page.locator('#pedal-gas').boundingBox();
+  assert.ok(gasBox,'gas pedal is absent');
+  await page.mouse.move(gasBox.x+gasBox.width/2,gasBox.y+gasBox.height/2);
+  await page.mouse.down();
+  try {
+    await page.waitForFunction(()=>Number(document.querySelector('#speed')?.textContent||'0')>2,null,{timeout:7000});
+  } finally {
+    await page.mouse.up();
+  }
+  await page.screenshot({path:'webkit-driving-buggy.png'});
+  await page.locator('#exit-car').click();
+  await page.locator('#drive-controls').waitFor({state:'hidden'});
+  await page.locator('#save').click();
+  await page.waitForTimeout(850);
+  await page.reload({waitUntil:'networkidle'});
+  await page.locator('#status').getByText(/Explorando/).waitFor({timeout:30000});
+  await page.locator('#ride').waitFor({state:'visible'});
+  assert.equal(await page.locator('#salvage-cache').isHidden(),true,'starter cache came back on reload');
+  console.log('PASS: salvage cache, modular car construction, iPhone touch pedal, driving physics and vehicle persistence');
+
   assert.equal(errors.length,0,'WebKit page errors: '+errors.join('\n'));
   console.log('PASS: WebKit iPhone touch exploration, collect, place, undo/redo, IndexedDB reload, blueprint download');
   await page.close();

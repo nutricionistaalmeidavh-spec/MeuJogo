@@ -59,3 +59,47 @@ body.build-mode #actions button{min-height:32px;padding:7px 9px;font-size:11px}
 }
 @media(pointer:fine){#joystick{opacity:.6}}
 @media(prefers-reduced-motion:reduce){#message{transition:none}}
+
+
+/* Phase 3 — compact garage, vehicle telemetry and iPhone pedal controls */
+[hidden]{display:none!important}
+.garage{margin-top:12px;padding:11px;background:#1d362c;border:1px solid #8aab8e66;border-radius:12px}
+.garage-title{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.garage-title b{font-size:13px;color:#d7eacb}
+.garage-title small{line-height:1.4}
+.garage-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.garage-buttons button{min-width:0;min-height:39px;font-size:11px;padding:7px 5px}
+#quick-buggy{grid-column:span 2;background:#a16d3d;border-color:#e3b676}
+#salvage-cache{background:#886b39;border-color:#e1bb5d;color:#fff1bf}
+#ride{background:#417c68;border-color:#9ae0b4}
+#drive-hud{position:absolute;top:calc(92px + env(safe-area-inset-top));left:12px;padding:12px 14px;min-width:220px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#drive-hud .speed{font-size:13px;color:#cbe2d1}
+#speed{font-size:27px;color:#fff4ce;font-variant-numeric:tabular-nums}
+.drive-status{font-size:11px;color:#cde1d6;max-width:220px}
+#drive-hud button{font-size:11px;padding:7px 10px;min-height:35px}
+#drive-controls{position:absolute;left:0;right:0;bottom:calc(16px + env(safe-area-inset-bottom));display:flex;justify-content:space-between;gap:12px;padding:0 16px}
+#drive-controls .steer-controls,#drive-controls .pedal-controls{pointer-events:auto;display:flex;align-items:flex-end;gap:7px}
+#drive-controls button{width:76px;height:70px;font-size:13px;border-radius:16px;background:#254838ec;border:1px solid #b2e9c68a;touch-action:none;user-select:none;-webkit-user-select:none;box-shadow:0 8px 20px #0004}
+#drive-controls button.held{background:#82bca0;color:#132a20}
+#drive-controls #pedal-gas{height:97px;background:#326f54e8;border-color:#9cddaa}
+#drive-controls #pedal-brake{height:76px;background:#803d39e8;border-color:#e38d83}
+#drive-controls #pedal-reverse{height:67px;background:#605038d9}
+body.drive-mode #joystick,body.drive-mode #actions{display:none}
+body.drive-mode #hint{top:calc(200px + env(safe-area-inset-top))}
+@media(max-width:650px){
+  .garage-buttons{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #drive-hud{top:calc(67px + env(safe-area-inset-top));left:10px;padding:10px;max-width:calc(100vw - 20px)}
+  #drive-hud .speed{font-size:12px}
+  #speed{font-size:24px}
+  #drive-controls{padding:0 10px;gap:7px;bottom:calc(14px + env(safe-area-inset-bottom))}
+  #drive-controls button{width:53px;height:66px;font-size:12px;border-radius:12px}
+  #drive-controls #pedal-gas{height:86px}
+  #drive-controls #pedal-brake{height:71px}
+  #drive-controls #pedal-reverse{height:61px}
+  #drive-controls .steer-controls,#drive-controls .pedal-controls{gap:5px}
+  body.drive-mode #hint{top:calc(170px + env(safe-area-inset-top));font-size:10px}
+}
+@media(max-width:375px){
+  #drive-controls button{width:49px}
+  #drive-hud{min-width:0}
+}

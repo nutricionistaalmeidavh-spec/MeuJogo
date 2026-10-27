@@ -35,7 +35,7 @@ function material(kind:PartKind){
   }
   return value;
 }
-function partMesh(part:Part):THREE.Mesh{
+export function partMesh(part:Part):THREE.Mesh{
   const mesh=new THREE.Mesh(geometry(part.kind,part.length),material(part.kind));
   mesh.position.set(part.x,part.y,part.z);
   mesh.rotation.y=THREE.MathUtils.degToRad(part.rotation);
@@ -59,7 +59,9 @@ export class BuildView{
     }
     this.links=[];
     this.selected?.removeFromParent();this.selected=null;
+    const installed=new Set(state.vehicle?.partIds??[]);
     for(const part of state.parts){
+      if(installed.has(part.id))continue;
       const mesh=partMesh(part);this.scene.add(mesh);this.meshes.set(part.id,mesh);
     }
     for(const weld of state.welds){
@@ -98,5 +100,5 @@ export class BuildView{
     this.ghost.removeFromParent();this.ghost.geometry.dispose();
     (this.ghost.material as THREE.Material).dispose();this.ghost=null;
   }
-  clear(){this.hidePreview();this.render({version:2,player:{x:0,z:0},inventory:{metal:0,copper:0},collected:[],parts:[],welds:[],savedAt:0},null);}
+  clear(){this.hidePreview();this.render({version:3,player:{x:0,z:0},inventory:{metal:0,copper:0},collected:[],parts:[],welds:[],vehicle:null,savedAt:0},null);}
 }
