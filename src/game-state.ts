@@ -163,3 +163,28 @@ export function installBlueprint(state:GameState,raw:unknown,origin:Position):Re
   next.inventory.metal-=costs.metal;next.inventory.copper-=costs.copper;
   return {ok:true,state:next};
 }
+
+/** Aligns a new piece to an end connector of a nearby existing piece. */
+export function snapToAssembly(position:Position,kind:PartKind,length:number,rotation:number,parts:readonly Part[]):{position:Position;connectTo:string|null}{
+  const rounded=snapPosition(position);
+  let nearest=1.05,connectTo:string|null=null;
+  let target=rounded;
+  for(const part of parts){
+    const axis=part.rotation%180===0?'x':'z';
+    const partHalf=part.length/2;
+    const newHalf=length/2;
+    for(const sign of [-1,1]){
+      const point:Position={
+        x:part.x+(axis==='x'?sign*(partHalf+newHalf):0),
+        y:part.y,
+        z:part.z+(axis==='z'?sign*(partHalf+newHalf):0)
+      };
+      if(Math.abs(point.y-position.y)>1.2)continue;
+      // Snap only if the two parts share an axis; other angles stay freeform.
+      if((rotation%180===0?'x':'z')!==axis)continue;
+      const d=distance(point,position);
+      if(d<nearest){nearest=d;target=snapPosition(point);connectTo=part.id;}
+    }
+  }
+  return {position:target,connectTo};
+}
