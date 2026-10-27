@@ -1,0 +1,55 @@
+import {webkit} from 'playwright';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const browser=await webkit.launch();
+try {
+  const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,acceptDownloads:true});
+  const errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  await page.goto('http://127.0.0.1:5173',{waitUntil:'networkidle'});
+  await page.locator('#status').getByText(/Explorando/).waitFor({timeout:30000});
+  assert.equal(await page.locator('#game-canvas').count(),1);
+  assert.equal(await page.locator('#metal').textContent(),'0');
+  await page.screenshot({path:'webkit-explore.png'});
+  await page.locator('#collect').click();
+  assert.equal(await page.locator('#metal').textContent(),'1','collecting nearby starter metal failed');
+  await page.locator('#toggle-build').click();
+  await page.locator('#builder').waitFor({state:'visible'});
+  await page.locator('[data-kind="connector"]').click();
+  await page.locator('#game-canvas').click({position:{x:195,y:330}});
+  await page.locator('#selected-details').getByText(/Conector/).waitFor({timeout:12000});
+  assert.equal(await page.locator('#metal').textContent(),'0','crafting did not spend metal');
+  await page.screenshot({path:'webkit-build.png'});
+  await page.locator('#undo').click();
+  assert.equal(await page.locator('#metal').textContent(),'1','undo did not return resources');
+  await page.locator('#redo').click();
+  assert.equal(await page.locator('#metal').textContent(),'0','redo did not spend resources');
+  await page.locator('#save').click();
+  await page.waitForTimeout(800);
+  await page.reload({waitUntil:'networkidle'});
+  await page.locator('#status').getByText(/Explorando/).waitFor({timeout:30000});
+  assert.equal(await page.locator('#metal').textContent(),'0','inventory did not persist on reload');
+  await page.locator('#toggle-build').click();
+  const downloadPromise=page.waitForEvent('download');
+  await page.locator('#export').click();
+  const download=await downloadPromise;
+  const blueprint=JSON.parse(await readFile(await download.path(),'utf8'));
+  assert.equal(blueprint.format,'meujogo-blueprint');
+  assert.equal(blueprint.parts.length,1,'construction did not persist on reload');
+  assert.equal(errors.length,0,'WebKit page errors: '+errors.join('\n'));
+  console.log('PASS: WebKit iPhone touch exploration, collect, place, undo/redo, IndexedDB reload, blueprint download');
+  await page.close();
+
+  const desktop=await browser.newPage({viewport:{width:1280,height:800}});
+  await desktop.goto('http://127.0.0.1:5173',{waitUntil:'networkidle'});
+  await desktop.locator('#status').getByText(/Explorando/).waitFor({timeout:30000});
+  await desktop.keyboard.press('b');
+  await desktop.locator('#builder').waitFor({state:'visible'});
+  assert.equal(await desktop.locator('[data-kind]').count(),7);
+  await desktop.keyboard.press('Escape');
+  await desktop.locator('#builder').waitFor({state:'hidden'});
+  console.log('PASS: desktop keyboard toggle and build catalog');
+  await desktop.close();
+} finally {
+  await browser.close();
+}
