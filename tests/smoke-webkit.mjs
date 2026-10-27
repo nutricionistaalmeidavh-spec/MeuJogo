@@ -44,12 +44,13 @@ try {
   await page.locator('#toggle-build').click();
   await page.locator('#quick-buggy').click();
   await page.locator('#builder').waitFor({state:'hidden'});
-  await page.locator('#ride').waitFor({state:'visible'});
+  // Regression: quick assembly must put the player in the vehicle, not lose the buggy offscreen.
+  await page.locator('#drive-controls').waitFor({state:'visible',timeout:12000});
+  assert.equal(await page.locator('#drive-hud').isVisible(),true,'car assembled without entering cockpit');
   assert.equal(await page.locator('#metal').textContent(),'0','car fabrication did not spend metal');
   assert.equal(await page.locator('#copper').textContent(),'0','car fabrication did not spend copper');
   await page.screenshot({path:'webkit-parked-buggy.png'});
-  await page.locator('#ride').click();
-  await page.locator('#drive-controls').waitFor({state:'visible'});
+  assert.equal(await page.locator('#ride').isHidden(),true,'ride button should hide while driving');
   const gasBox=await page.locator('#pedal-gas').boundingBox();
   assert.ok(gasBox,'gas pedal is absent');
   await page.mouse.move(gasBox.x+gasBox.width/2,gasBox.y+gasBox.height/2);
@@ -62,11 +63,24 @@ try {
   await page.screenshot({path:'webkit-driving-buggy.png'});
   await page.locator('#exit-car').click();
   await page.locator('#drive-controls').waitFor({state:'hidden'});
+  await page.locator('#vehicle-panel').waitFor({state:'visible'});
+  assert.match(await page.locator('#vehicle-distance').textContent(),/m/,'buggy location missing');
+  await page.locator('#locate-car').click();
+  assert.equal(await page.locator('#car-marker').isVisible(),true,'car map marker missing');
+  await page.locator('#recover-car').click();
+  await page.locator('#ride').click();
+  await page.locator('#drive-controls').waitFor({state:'visible'});
+  await page.locator('#exit-car').click();
+  await page.locator('#drive-controls').waitFor({state:'hidden'});
   await page.locator('#save').click();
   await page.waitForTimeout(850);
   await page.reload({waitUntil:'networkidle'});
   await page.locator('#status').getByText(/Explorando/).waitFor({timeout:30000});
   await page.locator('#ride').waitFor({state:'visible'});
+  await page.locator('#vehicle-panel').waitFor({state:'visible'});
+  await page.locator('#recover-car').click();
+  await page.locator('#ride').click();
+  await page.locator('#drive-controls').waitFor({state:'visible'});
   assert.equal(await page.locator('#salvage-cache').isHidden(),true,'starter cache came back on reload');
   console.log('PASS: salvage cache, modular car construction, iPhone touch pedal, driving physics and vehicle persistence');
 
