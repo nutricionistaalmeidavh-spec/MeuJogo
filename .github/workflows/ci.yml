@@ -1,4 +1,4 @@
-name: Build and Test
+name: Build and WebKit QA
 on:
   push:
     branches: [main, 'feat/**']
@@ -13,8 +13,41 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
+      - run: npm test
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with:
           name: meujogo-dist
           path: dist/
+  webkit:
+    runs-on: ubuntu-latest
+    needs: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps webkit
+      - run: npm run dev -- --host 127.0.0.1 > /tmp/vite.log 2>&1 & echo $! > /tmp/vite.pid
+      - name: Smoke test on WebKit iPhone viewport
+        run: |
+          node --input-type=module <<'EOF'
+          import { chromium, webkit } from 'playwright';
+          const browser = await webkit.launch();
+          const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+          const errors = [];
+          page.on('pageerror', error => errors.push(error.message));
+          await page.goto('http://127.0.0.1:5173', { waitUntil: 'networkidle' });
+          await page.locator('#status').getByText(/Explorando/).waitFor({timeout: 30000});
+          await page.locator('#camera').click();
+          await page.locator('#save').click();
+          await page.screenshot({path:'webkit-iphone.png'});
+          if(errors.length) throw new Error(errors.join('\n'));
+          await browser.close();
+          EOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webkit-iphone-screenshot
+          path: webkit-iphone.png
