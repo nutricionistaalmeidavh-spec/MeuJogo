@@ -56,7 +56,25 @@ try {
   await page.mouse.move(gasBox.x+gasBox.width/2,gasBox.y+gasBox.height/2);
   await page.mouse.down();
   try {
-    await page.waitForFunction(()=>Number(document.querySelector('#speed')?.textContent||'0')>2,null,{timeout:7000});
+    const telemetry=async()=>page.evaluate(()=>({
+      speed:document.querySelector('#speed')?.textContent,
+      buttonHeld:document.querySelector('#pedal-gas')?.classList.contains('held'),
+      charge:document.querySelector('#charge')?.textContent,
+      carY:document.querySelector('#drive-hud')?.getAttribute('data-car-y'),
+      grounded:document.querySelector('#drive-hud')?.getAttribute('data-wheel-ground'),
+      input:document.querySelector('#drive-hud')?.getAttribute('data-gas'),
+      mode:document.body.className
+    }));
+    console.log('Drive initially:',JSON.stringify(await telemetry()));
+    await page.waitForTimeout(1500);
+    console.log('Drive after 1.5 s:',JSON.stringify(await telemetry()));
+    try {
+      await page.waitForFunction(()=>Number(document.querySelector('#speed')?.textContent||'0')>2,null,{timeout:7000});
+    } catch(error) {
+      await page.screenshot({path:'webkit-drive-failure.png'});
+      console.log('Drive after timeout:',JSON.stringify(await telemetry()));
+      throw error;
+    }
   } finally {
     await page.mouse.up();
   }
