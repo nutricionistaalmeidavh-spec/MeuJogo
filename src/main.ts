@@ -18,6 +18,9 @@ app.innerHTML=[
   '<header id="topbar"><div class="panel brand"><h1>MEUJOGO <span>ALPHA 0.3</span></h1><small>Exploração e engenharia</small></div>',
   '<div class="panel stats"><div>Metal <b id="metal">0</b> · Cobre <b id="copper">0</b></div><small id="status">Carregando mundo...</small></div></header>',
   '<div id="hint" class="panel">Encontre sucata e comece sua oficina.</div>',
+  '<div id="vehicle-panel" class="panel" hidden><strong>Seu buggy</strong> · <span id="vehicle-distance">0 m</span>',
+  '<div class="vehicle-buttons"><button id="locate-car">Localizar no mapa</button><button id="recover-car">Resgatar buggy</button></div></div>',
+  '<div id="car-marker" hidden aria-label="Marcador da localização do buggy">BUGGY</div>',
   '<section id="builder" class="panel" hidden aria-label="Oficina de construção">',
   '<div class="builder-title"><div><h2>Oficina</h2><small>Toque no chão para construir</small></div><button id="close-build" aria-label="Fechar construção">✕</button></div>',
   '<div class="tool-bar" role="group" aria-label="Ferramentas">',
@@ -89,7 +92,7 @@ const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
 const keys=new Set<string>(),joystick={x:0,y:0};
 let rig:VehicleRig|null=null;
 const driveHeld={gas:false,reverse:false,brake:false,left:false,right:false};
-let impactCooldown=0,autosaveDrive=0;
+let impactCooldown=0,autosaveDrive=0,locateCarUntil=0;
 const cachePos={x:5,z:2};
 let state:GameState=initialState();
 let mode:'explore'|'build'|'drive'='explore',tool:'place'|'select'|'move'|'weld'='place';
@@ -124,6 +127,12 @@ function updateHud(){
   get('salvage-cache').hidden=mode!=='explore'||state.collected.includes(STARTER_CACHE_ID)||!cacheNear;
   cache.visible=!state.collected.includes(STARTER_CACHE_ID);
   get('ride').hidden=!hasCar||mode!=='explore';
+  get('vehicle-panel').hidden=!hasCar||mode!=='explore';
+  if(rig&&mode==='explore'){
+    const meters=Math.round(Math.hypot(player.position.x-rig.x,player.position.z-rig.z));
+    get('vehicle-distance').textContent=meters+' m de distância';
+    get('ride').textContent=meters<=7?'Entrar no buggy · F':'Buggy longe · Localizar';
+  }
   get('garage-status').textContent=hasCar?'Veículo montado: entre no carro na exploração':'Para dirigir: 4 rodas + motor + bateria + chassi soldado';
   get<HTMLButtonElement>('quick-buggy').disabled=hasCar;
   get<HTMLButtonElement>('assemble-car').disabled=hasCar;
@@ -351,6 +360,20 @@ get('salvage-cache').addEventListener('click',()=>{
   state=next;updateHud();queueSave();say('Sucata recuperada: +'+CAR_KIT_COST.metal+' metal e +'+CAR_KIT_COST.copper+' cobre');
 });
 get('ride').addEventListener('click',enterVehicle);
+get('locate-car').addEventListener('click',()=>{
+  if(!rig)return;
+  locateCarUntil=performance.now()+5000;
+  say('Buggy localizado; use Resgatar buggy se estiver distante');
+});
+get('recover-car').addEventListener('click',()=>{
+  if(!rig||mode!=='explore')return;
+  rig.recoverBeside(player.position.x+2.5,player.position.z+1.5);
+  rig.refreshTerrain(world.terrainMeshes(),world.obstaclesNear(rig.x,rig.z,64));
+  state={...state,vehicle:rig.capture()};
+  locateCarUntil=performance.now()+3500;
+  queueSave();updateHud();
+  say('Buggy resgatado ao seu lado. Agora toque em Entrar no buggy.');
+});
 get('exit-car').addEventListener('click',exitVehicle);
 get('upright').addEventListener('click',()=>{rig?.reset();say('Carro reposicionado');});
 get('quick-buggy').addEventListener('click',()=>{
@@ -358,12 +381,17 @@ get('quick-buggy').addEventListener('click',()=>{
   const origin={x:Math.round((player.position.x+4)*2)/2,y:Math.round(heightAt(player.position.x+4,player.position.z+3)*2)/2,z:Math.round((player.position.z+3)*2)/2};
   const result=buildBuggy(state,origin);
   if(!result.ok){say(result.error||'Não foi possível montar o buggy');return;}
-  commit(result.state);launchRig();setMode('explore');say('Buggy montado! Toque em Entrar no carro');
+  commit(result.state);launchRig();setMode('explore');
+  // Critical onboarding: launch directly into the driver's seat instead of leaving an unseen car.
+  enterVehicle();
+  if(mode!=='drive')say('Buggy montado. Use Localizar ou Resgatar para entrar.');
 });
 get('assemble-car').addEventListener('click',()=>{
   const result=assembleVehicle(state,{x:player.position.x,y:player.position.y,z:player.position.z});
   if(!result.ok){say(result.error||'Peças incompletas');return;}
-  commit(result.state);launchRig();setMode('explore');say('Seu carro de sucata está pronto');
+  commit(result.state);launchRig();setMode('explore');
+  enterVehicle();
+  if(mode!=='drive')say('Carro montado. Use Localizar ou Resgatar para entrar.');
 });
 get('disassemble-car').addEventListener('click',()=>{
   if(!rig){say('Nenhum veículo montado');return;}
@@ -444,12 +472,17 @@ function launchRig(){
 function enterVehicle(){
   if(!rig){say('Monte um veículo primeiro');return;}
   if(mode!=='explore')return;
-  if(Math.hypot(player.position.x-rig.x,player.position.z-rig.z)>7){say('Aproxime-se do seu carro para entrar');return;}
+  if(Math.hypot(player.position.x-rig.x,player.position.z-rig.z)>7){
+    locateCarUntil=performance.now()+5000;
+    say('O buggy está longe; toque em Resgatar buggy para trazê-lo de volta');
+    return;
+  }
   if(!rig.canDrive){say('Repare as rodas ou recarregue a bateria na oficina');return;}
   mode='drive';rig.setDriver(true);player.visible=false;autosaveDrive=0;
   document.body.classList.remove('build-mode');document.body.classList.add('drive-mode');
   get('builder').hidden=true;get('drive-hud').hidden=false;get('drive-controls').hidden=false;
   get('toggle-build').textContent='Construir · B';get('hint').textContent='Dirija com WASD ou controles na tela';
+  get('car-marker').hidden=true;locateCarUntil=0;
   updateHud();say('Acelere, freie e pilote o buggy de sucata');
 }
 function exitVehicle(){
@@ -528,12 +561,25 @@ function frame(time:number){
       }
     }
   }
-  const focus=mode==='drive'&&rig?new THREE.Vector3(rig.x,rig.y,rig.z):player.position;
+  const focus=rig&&(mode==='drive'||mode==='explore'&&time<locateCarUntil)?
+    new THREE.Vector3(rig.x,rig.y,rig.z):player.position;
   const viewZoom=mode==='drive'?zoom*1.35:zoom;
   const offset=new THREE.Vector3(Math.sin(cameraAngle)*viewZoom,viewZoom*.97,Math.cos(cameraAngle)*viewZoom);
   const target=focus.clone().add(offset);
   camera.position.lerp(target,Math.min(1,dt*6));
   camera.lookAt(focus.x,focus.y+.5,focus.z);
+  // Always-visible beacon, including when the car is outside the camera frustum.
+  const marker=get('car-marker');
+  marker.hidden=!rig||mode!=='explore';
+  if(rig&&mode==='explore'){
+    camera.updateMatrixWorld();
+    const view=new THREE.Vector3(rig.x,rig.y+3,rig.z).project(camera);
+    const margin=72;
+    const px=Math.max(margin,Math.min(innerWidth-margin,(view.x+1)*innerWidth/2));
+    const py=Math.max(105,Math.min(innerHeight-130,(1-view.y)*innerHeight/2));
+    marker.style.left=px+'px';marker.style.top=py+'px';
+    marker.textContent='BUGGY · '+Math.round(Math.hypot(player.position.x-rig.x,player.position.z-rig.z))+' m';
+  }
   sunlight.position.set(focus.x+35,focus.y+60,focus.z+30);
   const day=Math.sin(clock/120*Math.PI*2);
   sunlight.intensity=1.7+Math.max(.15,day)*.75;
