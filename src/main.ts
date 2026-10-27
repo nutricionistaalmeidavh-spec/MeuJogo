@@ -592,7 +592,11 @@ function frame(time:number){
       'Explore com WASD ou joystick; abra Construir para usar materiais';
     updateHud();lastHintAt=time;
   }
-  if(mode==='drive'&&rig){get('speed').textContent=String(rig.kmh);
+  if(mode==='drive'&&rig){
+    get('drive-hud').dataset.carY=rig.y.toFixed(2);
+    get('drive-hud').dataset.wheelGround=String(rig.contacts.filter(c=>c.grounded).length);
+    get('drive-hud').dataset.gas=String(driveHeld.gas);
+    get('speed').textContent=String(rig.kmh);
     get('charge').textContent=Math.ceil(rig.charge)+'%';get('health').textContent=Math.ceil(rig.health)+'%';
     get('wheel-status').textContent=rig.wheels+' rodas';}
   if(messageUntil&&time>messageUntil){get('message').classList.remove('show');messageUntil=0;}
