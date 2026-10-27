@@ -13,8 +13,10 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
-      - run: npm test
-      - run: npm run build
+      - name: Unit tests — terrain, economy, welds, blueprints
+        run: npm test
+      - name: Production TypeScript and Vite build
+        run: npm run build
       - uses: actions/upload-artifact@v4
         with:
           name: meujogo-dist
@@ -29,25 +31,13 @@ jobs:
           node-version: '22'
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps webkit
-      - run: npm run dev -- --host 127.0.0.1 > /tmp/vite.log 2>&1 & echo $! > /tmp/vite.pid
-      - name: Smoke test on WebKit iPhone viewport
-        run: |
-          node --input-type=module <<'EOF'
-          import { chromium, webkit } from 'playwright';
-          const browser = await webkit.launch();
-          const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-          const errors = [];
-          page.on('pageerror', error => errors.push(error.message));
-          await page.goto('http://127.0.0.1:5173', { waitUntil: 'networkidle' });
-          await page.locator('#status').getByText(/Explorando/).waitFor({timeout: 30000});
-          await page.locator('#camera').click();
-          await page.locator('#save').click();
-          await page.screenshot({path:'webkit-iphone.png'});
-          if(errors.length) throw new Error(errors.join('\n'));
-          await browser.close();
-          EOF
+      - name: Launch Vite test server
+        run: npm run dev -- --host 127.0.0.1 > /tmp/meujogo-vite.log 2>&1 & echo $! > /tmp/meujogo.pid
+      - name: Real browser tests — iPhone and desktop WebKit
+        run: node tests/smoke-webkit.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: webkit-iphone-screenshot
-          path: webkit-iphone.png
+          name: webkit-phase-1-2
+          path: webkit-*.png
+          if-no-files-found: ignore

@@ -1,1 +1,61 @@
-*{box-sizing:border-box}html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#111b1a;font-family:system-ui,-apple-system,sans-serif;color:#f3f5ee;touch-action:none}canvas{display:block}#hud{position:fixed;inset:0;pointer-events:none}header{position:absolute;top:env(safe-area-inset-top);left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:16px;gap:8px}.panel{background:#172825dc;border:1px solid #ffffff30;border-radius:16px;padding:10px 14px;backdrop-filter:blur(10px)}h1{font-size:15px;margin:0}small{font-size:11px;color:#bfd1c7}.stats{font-size:13px;text-align:right}button{pointer-events:auto;border:1px solid #ffffff35;border-radius:13px;background:#29483e;color:white;font-weight:700;padding:12px 14px;cursor:pointer}button:active{background:#4c8069}#actions{position:absolute;right:16px;bottom:calc(25px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:9px;align-items:flex-end}#joystick{position:absolute;left:24px;bottom:calc(34px + env(safe-area-inset-bottom));width:124px;height:124px;border:2px solid #ffffff40;border-radius:50%;background:#17282577;pointer-events:auto;touch-action:none}#stick{position:absolute;left:40px;top:40px;width:40px;height:40px;border-radius:50%;background:#b3dfbaaa;border:2px solid #d7ffe1}#message{position:absolute;left:50%;bottom:24%;transform:translateX(-50%);background:#172825ec;padding:10px 16px;border-radius:12px;text-align:center;min-width:180px;opacity:0;transition:opacity .2s}#message.show{opacity:1}@media(pointer:fine){#joystick{opacity:.55}}
+:root{color-scheme:dark;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}
+html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#111b1a;color:#edf8f1}
+#game-canvas{display:block;width:100%;height:100%;touch-action:none}
+#hud{position:fixed;inset:0;z-index:2;pointer-events:none}
+button{pointer-events:auto;background:#304b41;border:1px solid #6e968477;border-radius:11px;color:#f4fcf7;font-family:inherit;font-weight:650;font-size:12px;padding:10px 12px;min-height:40px;cursor:pointer}
+button:active{background:#46695a}
+button:focus-visible{outline:2px solid #f5dd88;outline-offset:2px}
+button:disabled{opacity:.36;cursor:not-allowed}
+.panel{background:rgba(17,35,31,.9);border:1px solid rgba(192,239,210,.2);border-radius:14px;box-shadow:0 8px 22px #06130d3b;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+#topbar{position:absolute;top:env(safe-area-inset-top,0px);left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:12px;gap:10px}
+.brand,.stats{padding:10px 12px}
+.brand h1{font-size:15px;line-height:1.1;letter-spacing:.03em;margin:0 0 3px}
+.brand h1 span{font-size:9px;color:#91c9ad;font-weight:700}
+small{font-size:11px;color:#b4caba}
+.stats{text-align:right;line-height:1.55;font-size:12px}
+.stats b{color:#e0cf8f}
+#hint{position:absolute;top:84px;left:12px;max-width:min(380px,calc(100vw - 24px));padding:8px 12px;font-size:11px;color:#d2e4d5}
+#actions{position:absolute;right:14px;bottom:calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:stretch}
+#actions button{min-width:104px}
+#collect{background:#3d7960;border-color:#80b98c}
+#toggle-build{background:#855b35;border-color:#b68f58}
+#joystick{position:absolute;left:24px;bottom:calc(34px + env(safe-area-inset-bottom));width:124px;height:124px;border:2px solid #d2f2da77;border-radius:50%;background:#203c3380;touch-action:none;pointer-events:auto}
+#stick{position:absolute;left:40px;top:40px;width:40px;height:40px;border-radius:50%;background:#a9dfb6a8;border:2px solid #e0ffdb;box-shadow:0 0 12px #8ac89d44}
+#message{position:absolute;left:50%;top:23%;transform:translateX(-50%);width:max-content;max-width:min(370px,90vw);text-align:center;background:#142e26ec;border:1px solid #a7e4b84d;border-radius:12px;padding:10px 16px;font-size:12px;opacity:0;transition:opacity .2s}
+#message.show{opacity:1}
+#builder{position:absolute;left:14px;bottom:calc(14px + env(safe-area-inset-bottom));width:min(370px,calc(100vw - 28px));max-height:calc(100dvh - 130px);overflow-y:auto;overscroll-behavior:contain;pointer-events:auto;padding:13px;touch-action:pan-y;scrollbar-width:thin}
+#builder[hidden]{display:none}
+.builder-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.builder-title h2{font-size:16px;margin:0 0 2px}
+.builder-title button{min-width:39px}
+.tool-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-bottom:8px}
+.tool-bar button{font-size:11px;min-width:0;padding:7px 3px;min-height:35px}
+.tool-bar button.active{background:#4d9477;border-color:#a4e3c0;color:#fff}
+.catalog{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:10px 0}
+.part-button{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;text-align:left;gap:3px;background:#263e35}
+.part-button small{font-size:10px}
+.part-button.active{border-color:#e5c78d;background:#544c38}
+.part-button.unaffordable{opacity:.65}
+.selected-details{min-height:32px;padding:8px;margin:5px 0 9px;background:#294237;border-radius:8px;color:#e0ebdd;font-size:11px;line-height:1.45}
+.tool-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
+.tool-secondary{grid-template-columns:repeat(2,minmax(0,1fr))}
+.build-help{display:block;line-height:1.35}
+body.build-mode #joystick,body.build-mode #hint{display:none}
+body.build-mode #actions{top:85px;bottom:auto;right:14px}
+body.build-mode #collect{display:none}
+body.build-mode #actions button{min-height:32px;padding:7px 9px;font-size:11px}
+@media(max-width:650px){
+  #topbar{padding:8px 10px}
+  .brand,.stats{padding:8px 9px}
+  .stats{font-size:11px}
+  .brand h1{font-size:13px}
+  #hint{top:72px}
+  #actions{right:10px;bottom:calc(14px + env(safe-area-inset-bottom));gap:7px}
+  #joystick{left:18px;bottom:calc(35px + env(safe-area-inset-bottom))}
+  body.build-mode #builder{width:100%;left:0;bottom:0;max-height:min(48dvh,430px);padding:12px 14px calc(12px + env(safe-area-inset-bottom));border-radius:16px 16px 0 0}
+  body.build-mode #actions{right:10px;top:75px}
+  body.build-mode #actions button{min-width:90px}
+}
+@media(pointer:fine){#joystick{opacity:.6}}
+@media(prefers-reduced-motion:reduce){#message{transition:none}}
