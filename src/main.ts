@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import {ChunkWorld,heightAt,chunkCoord} from './world';
 import {BuildView,partHeight} from './build-view';
+import {VehicleRig,type DriveInput} from './vehicle-physics';
+import {CAR_KIT_COST,STARTER_CACHE_ID,buildBuggy,assembleVehicle,disassembleVehicle,repairVehicle,rechargeVehicle,applyCrashDamage,claimStarterCache} from './vehicle-state';
 import {loadGame,saveGame} from './storage';
 import {
   PARTS,initialState,restoreState,collectScrap,craftPart,removePart,movePart,rotatePart,
@@ -13,7 +15,7 @@ import './style.css';
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=[
   '<div id="hud">',
-  '<header id="topbar"><div class="panel brand"><h1>MEUJOGO <span>ALPHA 0.2</span></h1><small>Exploração e engenharia</small></div>',
+  '<header id="topbar"><div class="panel brand"><h1>MEUJOGO <span>ALPHA 0.3</span></h1><small>Exploração e engenharia</small></div>',
   '<div class="panel stats"><div>Metal <b id="metal">0</b> · Cobre <b id="copper">0</b></div><small id="status">Carregando mundo...</small></div></header>',
   '<div id="hint" class="panel">Encontre sucata e comece sua oficina.</div>',
   '<section id="builder" class="panel" hidden aria-label="Oficina de construção">',
@@ -29,12 +31,25 @@ app.innerHTML=[
   '<div class="tool-bar tool-secondary"><button id="undo">↶ Desfazer</button><button id="redo">↷ Refazer</button>',
   '<button id="export">Exportar projeto</button><button id="import">Importar projeto</button>',
   '<input id="blueprint-file" type="file" accept=".json,application/json" hidden></div>',
-  '<small class="build-help">Peças custam recursos. Soldas ligam peças próximas. Projetos importados também consomem materiais.</small>',
+  '<div class="garage"><div class="garage-title"><b>Garagem de sucata</b><small id="garage-status">Monte um chassi com 4 rodas, motor e bateria</small></div>',
+  '<div class="garage-buttons"><button id="quick-buggy">Montar buggy · '+CAR_KIT_COST.metal+' metal / '+CAR_KIT_COST.copper+' cobre</button>',
+  '<button id="assemble-car">Usar peças soldadas</button><button id="disassemble-car">Desmontar veículo</button>',
+  '<button id="repair-car">Reparar carro</button><button id="recharge-car">Recarregar bateria</button></div></div>',
+  '<small class="build-help">Peças consomem sucata. Soldas ligam peças próximas. Para alterar uma peça montada, desmonte o carro na garagem.</small>',
   '</section>',
   '<div id="joystick" aria-label="Mover personagem" role="application"><div id="stick"></div></div>',
-  '<div id="actions"><button id="collect" title="Coletar sucata próxima">Coletar <span id="collect-near">· E</span></button>',
+  '<div id="actions"><button id="salvage-cache" title="Recuperar oficina abandonada">Recuperar oficina</button><button id="collect" title="Coletar sucata próxima">Coletar <span id="collect-near">· E</span></button>',
   '<button id="toggle-build">Construir · B</button><button id="camera">Girar câmera</button>',
-  '<button id="zoom">Zoom</button><button id="save">Salvar</button></div>',
+  '<button id="zoom">Zoom</button><button id="save">Salvar</button><button id="ride">Entrar no carro · F</button></div>',
+  '<div id="drive-hud" class="panel" hidden><div class="speed"><b id="speed">0</b> km/h</div>',
+  '<div class="drive-status">Bateria <b id="charge">100%</b> · Integridade <b id="health">100%</b> · <span id="wheel-status">4 rodas</span></div>',
+  '<button id="upright">Desvirar · R</button><button id="exit-car">Sair · F</button></div>',
+  '<div id="drive-controls" hidden aria-label="Controles do carro">',
+  '<div class="steer-controls"><button id="turn-left" data-drive="left" aria-label="Virar à esquerda">◀</button>',
+  '<button id="turn-right" data-drive="right" aria-label="Virar à direita">▶</button></div>',
+  '<div class="pedal-controls"><button id="pedal-brake" data-drive="brake">Freio</button>',
+  '<button id="pedal-reverse" data-drive="reverse">Ré</button>',
+  '<button id="pedal-gas" data-drive="gas">Acelerar</button></div></div>',
   '<div id="message" role="status" aria-live="polite"></div>',
   '</div>'
 ].join('');
@@ -65,10 +80,19 @@ const body=new THREE.Mesh(new THREE.CapsuleGeometry(.36,.86,5,10),new THREE.Mesh
 body.position.y=1.05;body.castShadow=true;player.add(body);
 const face=new THREE.Mesh(new THREE.BoxGeometry(.24,.15,.1),new THREE.MeshStandardMaterial({color:0x324a48}));
 face.position.set(0,1.3,.36);player.add(face);scene.add(player);
+const cache=new THREE.Group();
+const cacheBox=new THREE.Mesh(new THREE.BoxGeometry(2.4,.55,1.5),new THREE.MeshStandardMaterial({color:0x9c663d,metalness:.32,roughness:.75}));
+cacheBox.rotation.y=.23;cacheBox.castShadow=true;cache.add(cacheBox);
+const cacheSignal=new THREE.Mesh(new THREE.TorusGeometry(.48,.08,7,20),new THREE.MeshStandardMaterial({color:0xffd880,emissive:0x9d6021,emissiveIntensity:.32}));
+cacheSignal.position.y=1;cacheSignal.rotation.x=Math.PI/2;cache.add(cacheSignal);scene.add(cache);
 const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
 const keys=new Set<string>(),joystick={x:0,y:0};
+let rig:VehicleRig|null=null;
+const driveHeld={gas:false,reverse:false,brake:false,left:false,right:false};
+let impactCooldown=0,autosaveDrive=0;
+const cachePos={x:5,z:2};
 let state:GameState=initialState();
-let mode:'explore'|'build'='explore',tool:'place'|'select'|'move'|'weld'='place';
+let mode:'explore'|'build'|'drive'='explore',tool:'place'|'select'|'move'|'weld'='place';
 let chosen:PartKind='connector',selection:string|null=null,weldStart:string|null=null;
 let candidate:Position|null=null,rotation=0,lift=0,zoom=13,cameraAngle=Math.PI/4;
 let history:GameState[]=[],future:GameState[]=[];
@@ -94,7 +118,22 @@ function updateHud(){
   const close=world.closestScrap(player.position.x,player.position.z);
   get('collect-near').textContent=close?'· +1 '+(close.resource==='metal'?'metal':'cobre'):'· E';
   const coords='Região '+chunkCoord(player.position.x)+','+chunkCoord(player.position.z);
-  get('status').textContent=(mode==='build'?'Construindo':'Explorando')+' · '+coords;
+  get('status').textContent=(mode==='drive'?'Dirigindo':mode==='build'?'Construindo':'Explorando')+' · '+coords;
+  const hasCar=!!state.vehicle;
+  const cacheNear=Math.hypot(player.position.x-cachePos.x,player.position.z-cachePos.z)<8;
+  get('salvage-cache').hidden=mode!=='explore'||state.collected.includes(STARTER_CACHE_ID)||!cacheNear;
+  cache.visible=!state.collected.includes(STARTER_CACHE_ID);
+  get('ride').hidden=!hasCar||mode!=='explore';
+  get('garage-status').textContent=hasCar?'Veículo montado: entre no carro na exploração':'Para dirigir: 4 rodas + motor + bateria + chassi soldado';
+  get<HTMLButtonElement>('quick-buggy').disabled=hasCar;
+  get<HTMLButtonElement>('assemble-car').disabled=hasCar;
+  get<HTMLButtonElement>('disassemble-car').disabled=!hasCar;
+  get<HTMLButtonElement>('repair-car').disabled=!hasCar;
+  get<HTMLButtonElement>('recharge-car').disabled=!hasCar;
+  if(rig){get('speed').textContent=String(rig.kmh);
+    get('charge').textContent=Math.ceil(rig.charge)+'%';
+    get('health').textContent=Math.ceil(rig.health)+'%';
+    get('wheel-status').textContent=rig.wheels+' rodas';}
   for(const button of Array.from(get('part-catalog').querySelectorAll<HTMLButtonElement>('[data-kind]'))){
     const kind=button.dataset.kind as PartKind;
     button.classList.toggle('active',kind===chosen);
@@ -144,7 +183,7 @@ function queueSave(){
   saveTimer=setTimeout(()=>{void persist();},750);
 }
 function snapshot():GameState{
-  return {...state,player:{x:player.position.x,z:player.position.z},savedAt:Date.now()};
+  return {...state,player:{x:player.position.x,z:player.position.z},vehicle:rig?rig.capture():state.vehicle,savedAt:Date.now()};
 }
 async function persist(){
   if(!loaded)return;
@@ -167,6 +206,7 @@ function doCollect(){
   say('+1 '+(item.resource==='metal'?'metal':'cobre')+' no inventário');
 }
 function setMode(next:'explore'|'build'){
+  if(mode==='drive')return;
   mode=next;document.body.classList.toggle('build-mode',mode==='build');
   get('builder').hidden=mode!=='build';
   get('toggle-build').textContent=mode==='build'?'Explorar · B':'Construir · B';
@@ -287,7 +327,9 @@ addEventListener('keydown',e=>{
     if(e.key.toLowerCase()==='y'){e.preventDefault();redo();return;}
   }
   const key=e.key.toLowerCase();keys.add(key);
-  if(key==='b')setMode(mode==='build'?'explore':'build');
+  if(key==='b'&&mode!=='drive')setMode(mode==='build'?'explore':'build');
+  if(key==='f'){if(mode==='drive')exitVehicle();else if(mode==='explore')enterVehicle();}
+  if(key==='r'&&mode==='drive')rig?.reset();
   if(key==='e'&&mode==='explore')doCollect();
   if(key==='r'&&mode==='build')adjustRotation();
   if(key==='escape'&&mode==='build')setMode('explore');
@@ -303,6 +345,43 @@ get('close-build').addEventListener('click',()=>setMode('explore'));
 get('camera').addEventListener('click',()=>{cameraAngle+=Math.PI/4;});
 get('zoom').addEventListener('click',()=>{zoom=zoom>=22?10:zoom+3;resize();});
 get('save').addEventListener('click',()=>{void persist().then(()=>say('Salvamento local solicitado'));});
+get('salvage-cache').addEventListener('click',()=>{
+  if(Math.hypot(player.position.x-cachePos.x,player.position.z-cachePos.z)>8){say('Aproxime-se do ferro-velho');return;}
+  const next=claimStarterCache(state);if(next===state)return;
+  state=next;updateHud();queueSave();say('Sucata recuperada: +'+CAR_KIT_COST.metal+' metal e +'+CAR_KIT_COST.copper+' cobre');
+});
+get('ride').addEventListener('click',enterVehicle);
+get('exit-car').addEventListener('click',exitVehicle);
+get('upright').addEventListener('click',()=>{rig?.reset();say('Carro reposicionado');});
+get('quick-buggy').addEventListener('click',()=>{
+  if(rig){say('Desmonte o veículo existente primeiro');return;}
+  const origin={x:Math.round((player.position.x+4)*2)/2,y:Math.round(heightAt(player.position.x+4,player.position.z+3)*2)/2,z:Math.round((player.position.z+3)*2)/2};
+  const result=buildBuggy(state,origin);
+  if(!result.ok){say(result.error||'Não foi possível montar o buggy');return;}
+  commit(result.state);launchRig();setMode('explore');say('Buggy montado! Toque em Entrar no carro');
+});
+get('assemble-car').addEventListener('click',()=>{
+  const result=assembleVehicle(state,{x:player.position.x,y:player.position.y,z:player.position.z});
+  if(!result.ok){say(result.error||'Peças incompletas');return;}
+  commit(result.state);launchRig();setMode('explore');say('Seu carro de sucata está pronto');
+});
+get('disassemble-car').addEventListener('click',()=>{
+  if(!rig){say('Nenhum veículo montado');return;}
+  const staged={...state,vehicle:rig.capture()};
+  const unpacked=disassembleVehicle(staged);
+  rig.dispose();rig=null;
+  commit(unpacked);say('Veículo desmontado: peças disponíveis na oficina');
+});
+get('repair-car').addEventListener('click',()=>serviceVehicle('repair'));
+get('recharge-car').addEventListener('click',()=>serviceVehicle('recharge'));
+for(const button of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-drive]'))){
+  const action=button.dataset.drive as keyof typeof driveHeld;
+  const activate=(e:PointerEvent)=>{button.setPointerCapture(e.pointerId);driveHeld[action]=true;button.classList.add('held');e.preventDefault();};
+  const deactivate=()=>{driveHeld[action]=false;button.classList.remove('held');};
+  button.addEventListener('pointerdown',activate);
+  button.addEventListener('pointerup',deactivate);button.addEventListener('pointercancel',deactivate);
+  button.addEventListener('lostpointercapture',deactivate);
+}
 for(const name of ['place','select','move','weld'] as const)
   get('tool-'+name).addEventListener('click',()=>setTool(name));
 get('part-catalog').addEventListener('click',e=>{
@@ -356,6 +435,41 @@ get<HTMLInputElement>('blueprint-file').addEventListener('change',async e=>{
     if(accept(result))say('Projeto importado e materiais consumidos');
   }catch{say('Arquivo JSON inválido');}
 });
+function launchRig(){
+  if(!state.vehicle||rig)return;
+  rig=new VehicleRig(scene,state);
+  rig.refreshTerrain(world.terrainMeshes(),world.obstaclesNear(rig.x,rig.z,64));
+  renderBuild();
+}
+function enterVehicle(){
+  if(!rig){say('Monte um veículo primeiro');return;}
+  if(mode!=='explore')return;
+  if(Math.hypot(player.position.x-rig.x,player.position.z-rig.z)>7){say('Aproxime-se do seu carro para entrar');return;}
+  if(!rig.canDrive){say('Repare as rodas ou recarregue a bateria na oficina');return;}
+  mode='drive';rig.setDriver(true);player.visible=false;autosaveDrive=0;
+  document.body.classList.remove('build-mode');document.body.classList.add('drive-mode');
+  get('builder').hidden=true;get('drive-hud').hidden=false;get('drive-controls').hidden=false;
+  get('toggle-build').textContent='Construir · B';get('hint').textContent='Dirija com WASD ou controles na tela';
+  updateHud();say('Acelere, freie e pilote o buggy de sucata');
+}
+function exitVehicle(){
+  if(!rig||mode!=='drive')return;
+  mode='explore';rig.setDriver(false);player.visible=true;
+  document.body.classList.remove('drive-mode');
+  get('drive-hud').hidden=true;get('drive-controls').hidden=true;
+  for(const key of Object.keys(driveHeld) as (keyof typeof driveHeld)[])driveHeld[key]=false;
+  const side=new THREE.Vector3(2,0,0).applyQuaternion(rig.group.quaternion);
+  player.position.set(rig.x+side.x,heightAt(rig.x+side.x,rig.z+side.z),rig.z+side.z);
+  state={...state,vehicle:rig.capture()};queueSave();updateHud();say('Veículo estacionado');
+}
+function serviceVehicle(which:'repair'|'recharge'){
+  if(!rig){say('Nenhum veículo montado');return;}
+  const current={...state,vehicle:rig.capture()};
+  const result=which==='repair'?repairVehicle(current):rechargeVehicle(current);
+  if(!result.ok){say(result.error||'Operação indisponível');return;}
+  commit(result.state);rig.updateData(result.state.vehicle!);
+  say(which==='repair'?'Veículo reparado':'Bateria recarregada');
+}
 function resize(){
   const aspect=innerWidth/innerHeight;
   camera.left=-zoom*aspect;camera.right=zoom*aspect;
@@ -371,6 +485,8 @@ async function init(){
   state=restoreState(previous);
   player.position.set(state.player.x,heightAt(state.player.x,state.player.z),state.player.z);
   world.update(player.position.x,player.position.z,state.collected);
+  cache.position.set(cachePos.x,heightAt(cachePos.x,cachePos.z)+.35,cachePos.z);
+  if(state.vehicle)launchRig();
   renderBuild();loaded=true;
   say(previous?'Mundo recuperado · abra a Oficina para construir':'Colete sucata e construa sua primeira peça');
   requestAnimationFrame(frame);
@@ -393,11 +509,32 @@ function frame(time:number){
     }
   }
   player.position.y=heightAt(player.position.x,player.position.z);
-  const offset=new THREE.Vector3(Math.sin(cameraAngle)*zoom,zoom*.97,Math.cos(cameraAngle)*zoom);
-  const target=player.position.clone().add(offset);
+  if(rig){
+    const throttle=driveHeld.gas||keys.has('w')||keys.has('arrowup')?1:driveHeld.reverse||keys.has('s')||keys.has('arrowdown')?-.65:0;
+    const steer=(driveHeld.left||keys.has('a')||keys.has('arrowleft')?-1:0)+(driveHeld.right||keys.has('d')||keys.has('arrowright')?1:0);
+    rig.setInput({throttle,steer,brake:driveHeld.brake||keys.has(' ')||mode!=='drive'});
+    rig.stepFrame(dt);
+    if(world.update(rig.x,rig.z,state.collected))rig.refreshTerrain(world.terrainMeshes(),world.obstaclesNear(rig.x,rig.z,64));
+    if(mode==='drive'){
+      autosaveDrive+=dt;
+      if(autosaveDrive>6){autosaveDrive=0;queueSave();}
+      if(time>impactCooldown&&rig.kmh>24){
+        const hit=world.obstaclesNear(rig.x,rig.z,2.4).find(o=>Math.hypot(o.x-rig!.x,o.z-rig!.z)<o.radius+1.15);
+        if(hit){impactCooldown=time+1600;
+          const impact=applyCrashDamage({...state,vehicle:rig.capture()},Math.max(10,rig.kmh*.6),rig.kmh/3.6);
+          if(impact.ok&&impact.state.vehicle){state=impact.state;rig.updateData(impact.state.vehicle);queueSave();
+            say('Impacto! Integridade '+Math.round(rig.health)+'%'+(rig.wheels<4?' · roda desprendida':'') );}
+        }
+      }
+    }
+  }
+  const focus=mode==='drive'&&rig?new THREE.Vector3(rig.x,rig.y,rig.z):player.position;
+  const viewZoom=mode==='drive'?zoom*1.35:zoom;
+  const offset=new THREE.Vector3(Math.sin(cameraAngle)*viewZoom,viewZoom*.97,Math.cos(cameraAngle)*viewZoom);
+  const target=focus.clone().add(offset);
   camera.position.lerp(target,Math.min(1,dt*6));
-  camera.lookAt(player.position.x,player.position.y+.5,player.position.z);
-  sunlight.position.set(player.position.x+35,player.position.y+60,player.position.z+30);
+  camera.lookAt(focus.x,focus.y+.5,focus.z);
+  sunlight.position.set(focus.x+35,focus.y+60,focus.z+30);
   const day=Math.sin(clock/120*Math.PI*2);
   sunlight.intensity=1.7+Math.max(.15,day)*.75;
   const haze=new THREE.Color(0xabc8c0).lerp(new THREE.Color(0x566c7a),Math.max(0,-day)*.65);
@@ -409,6 +546,9 @@ function frame(time:number){
       'Explore com WASD ou joystick; abra Construir para usar materiais';
     updateHud();lastHintAt=time;
   }
+  if(mode==='drive'&&rig){get('speed').textContent=String(rig.kmh);
+    get('charge').textContent=Math.ceil(rig.charge)+'%';get('health').textContent=Math.ceil(rig.health)+'%';
+    get('wheel-status').textContent=rig.wheels+' rodas';}
   if(messageUntil&&time>messageUntil){get('message').classList.remove('show');messageUntil=0;}
   renderer.render(scene,camera);
 }
