@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {initialState,craftPart,restoreState,makeBlueprint} from './game-state';
 import {
-  CAR_KIT_COST,buildBuggy,assembleVehicle,disassembleVehicle,
+  CAR_KIT_COST,claimStarterCache,buildBuggy,assembleVehicle,disassembleVehicle,
   repairVehicle,rechargeVehicle,applyCrashDamage,vehicleMass,validateAssembly
 } from './vehicle-state';
 const enriched=()=>{
@@ -9,6 +9,12 @@ const enriched=()=>{
   s.inventory.metal=40;s.inventory.copper=15;return s;
 };
 describe('phase 3: built vehicles',()=>{
+  it('offers a one-time salvaged workshop kit without resource duplication',()=>{
+    const start=initialState();const once=claimStarterCache(start);
+    expect(once.inventory.metal).toBe(CAR_KIT_COST.metal);
+    expect(once.inventory.copper).toBe(CAR_KIT_COST.copper);
+    expect(claimStarterCache(once)).toEqual(once);
+  });
   it('requires materials and never partially consumes on failed construction',()=>{
     const s=initialState();
     const result=buildBuggy(s,{x:3,y:2,z:0});
