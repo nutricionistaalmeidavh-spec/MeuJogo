@@ -6,7 +6,7 @@ import {loadGame,saveGame} from './storage';
 import {
   PARTS,initialState,restoreState,collectScrap,craftPart,removePart,movePart,rotatePart,
   resizePart,weldParts,makeBlueprint,installBlueprint,snapPosition,partCost,
-  type GameState,type PartKind,type Part,type Position,type Result
+  snapToAssembly,type GameState,type PartKind,type Part,type Position,type Result
 } from './game-state';
 import './style.css';
 
@@ -210,7 +210,8 @@ function positionAt(e:PointerEvent):Position|null {
   const height=partHeight(kind)/2;
   let candidateY=Math.round((heightAt(x,z)+height+lift)*2)/2;
   if(candidateY<heightAt(x,z)+height-.3)candidateY=Math.ceil((heightAt(x,z)+height)*2)/2;
-  return snapPosition({x,y:candidateY,z});
+  const point=snapPosition({x,y:candidateY,z});
+  return tool==='place'?snapToAssembly(point,chosen,PARTS[chosen].length,rotation,state.parts).position:point;
 }
 function chooseExisting(e:PointerEvent):string|null{
   rayAt(e);return buildView.pick(raycaster);
@@ -241,7 +242,13 @@ function onGround(e:PointerEvent){
     say('Peça reposicionada');updatePreview();return;
   }
   const id='part-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
-  if(accept(craftPart(state,chosen,point,id,rotation))){selection=id;say(PARTS[chosen].label+' instalada');}
+  const joint=snapToAssembly(point,chosen,PARTS[chosen].length,rotation,state.parts);
+  const created=craftPart(state,chosen,joint.position,id,rotation);
+  if(created.ok){
+    let next=created.state;
+    if(joint.connectTo){const welded=weldParts(next,id,joint.connectTo);if(welded.ok)next=welded.state;}
+    commit(next);selection=id;renderBuild();say(PARTS[chosen].label+' instalada'+(joint.connectTo?' e encaixada':''));
+  }else say(created.error||'Materiais insuficientes');
   updatePreview();
 }
 let pointerDown:{x:number;y:number;pointerId:number}|null=null;
