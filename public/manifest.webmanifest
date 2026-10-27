@@ -1,0 +1,8 @@
+{
+  "name": "MeuJogo — Sucata e Exploração",
+  "short_name": "MeuJogo",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111b1a",
+  "theme_color": "#111b1a"
+}
