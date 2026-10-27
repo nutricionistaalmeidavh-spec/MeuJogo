@@ -1,7 +1,7 @@
 name: Build and WebKit QA
 on:
   push:
-    branches: [main, 'feat/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 jobs:
@@ -13,7 +13,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
-      - name: Unit tests — terrain, economy, welds, blueprints
+      - name: Unit tests — terrain, fabrication, suspension, damage and saves
         run: npm test
       - name: Production TypeScript and Vite build
         run: npm run build
@@ -33,11 +33,11 @@ jobs:
       - run: npx playwright install --with-deps webkit
       - name: Launch Vite test server
         run: npm run dev -- --host 127.0.0.1 > /tmp/meujogo-vite.log 2>&1 & echo $! > /tmp/meujogo.pid
-      - name: Real browser tests — iPhone and desktop WebKit
+      - name: WebKit — explore, build, fabricate, drive and save on iPhone
         run: node tests/smoke-webkit.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: webkit-phase-1-2
+          name: webkit-phase-3
           path: webkit-*.png
           if-no-files-found: ignore
