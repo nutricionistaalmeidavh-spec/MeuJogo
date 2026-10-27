@@ -1,6 +1,15 @@
 import {describe,it,expect} from 'vitest';
-import {wheelSpring,motorForce,steerStrength,energyUsed,wheelGrip} from './vehicle-dynamics';
+import {wheelSpring,motorForce,steerStrength,energyUsed,wheelGrip,suspensionSupportForce} from './vehicle-dynamics';
 describe('vehicle dynamics: stable deterministic control forces',()=>{
+ it('never applies a suspension impulse exceeding the simulated body weight',()=>{
+   const mass=135;
+   const maxEach=mass*9.81*.4;
+   expect(suspensionSupportForce(.71,-50,mass)).toBeLessThanOrEqual(maxEach);
+   expect(suspensionSupportForce(.71,0,mass)).toBeGreaterThan(0);
+   expect(suspensionSupportForce(0,0,mass)).toBe(0);
+   expect(suspensionSupportForce(.71,0,1)).toBeLessThanOrEqual(4);
+ });
+
  it('wheel suspension pushes upwards on compressed wheels and damps oscillations',()=>{
   expect(wheelSpring(.35,0)).toBeGreaterThan(0);
   expect(wheelSpring(-.05,0)).toBe(0);
