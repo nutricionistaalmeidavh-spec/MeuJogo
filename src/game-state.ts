@@ -4,13 +4,20 @@ export type PartKind = 'connector'|'beam'|'plate'|'wheel'|'motor'|'battery'|'pip
 export type Position = {x:number;y:number;z:number};
 export interface Part extends Position {id:string;kind:PartKind;rotation:number;length:number}
 export interface Weld {a:string;b:string}
+export interface VehicleSave {
+  partIds:string[];
+  originX:number;originY:number;originZ:number;
+  x:number;y:number;z:number;yaw:number;
+  charge:number;health:number;detachedWheelIds:string[];distance:number;
+}
 export interface GameState {
-  version:2;
+  version:3;
   player:{x:number;z:number};
   inventory:Inventory;
   collected:string[];
   parts:Part[];
   welds:Weld[];
+  vehicle:VehicleSave|null;
   savedAt:number;
 }
 export interface Blueprint {format:'meujogo-blueprint';version:1;parts:Part[];welds:Weld[]}
@@ -33,7 +40,7 @@ export function snapPosition(p:Position):Position {
   return {x:snap(p.x),y:snap(p.y),z:snap(p.z)};
 }
 export function initialState():GameState {
-  return {version:2,player:{x:0,z:0},inventory:{metal:0,copper:0},collected:[],parts:[],welds:[],savedAt:0};
+  return {version:3,player:{x:0,z:0},inventory:{metal:0,copper:0},collected:[],parts:[],welds:[],vehicle:null,savedAt:0};
 }
 export function partCost(kind:PartKind,length=PARTS[kind].length):Inventory {
   const def=PARTS[kind],ratio=def.adjustable?Math.max(.5,Math.min(8,length))/def.length:1;
@@ -68,12 +75,30 @@ export function restoreState(raw:unknown):GameState {
       result.welds.push({a:pair.a,b:pair.b});
     }
   }
+  if(isRecord(raw.vehicle)&&Array.isArray(raw.vehicle.partIds)){
+    const v=raw.vehicle;
+    const partIds=Array.from(new Set(v.partIds.filter((id):id is string=>typeof id==='string'&&result.parts.some(p=>p.id===id)))).slice(0,48);
+    if(partIds.length>=7&&partIds.filter(id=>result.parts.some(p=>p.id===id&&p.kind==='wheel')).length>=3){
+      const originPart=result.parts.find(p=>partIds.includes(p.id)&&(p.kind==='beam'||p.kind==='plate'));
+      if(originPart){
+        const safePos=(x:unknown)=>Math.max(-10000,Math.min(10000,finite(x)));
+        result.vehicle={
+          partIds,originX:safePos(v.originX??originPart.x),originY:safePos(v.originY??originPart.y),originZ:safePos(v.originZ??originPart.z),
+          x:safePos(v.x??originPart.x),y:safePos(v.y??originPart.y),z:safePos(v.z??originPart.z),
+          yaw:finite(v.yaw),charge:Math.max(0,Math.min(100,finite(v.charge,100))),
+          health:Math.max(0,Math.min(100,finite(v.health,100))),
+          detachedWheelIds:Array.isArray(v.detachedWheelIds)?Array.from(new Set(v.detachedWheelIds.filter((id):id is string=>typeof id==='string'&&partIds.includes(id)&&result.parts.some(p=>p.id===id&&p.kind==='wheel')))):[],
+          distance:Math.max(0,finite(v.distance))
+        };
+      }
+    }
+  }
   result.savedAt=finite(raw.savedAt);
   return result;
 }
 function samePair(a:string,b:string,c:string,d:string){return a===c&&b===d||a===d&&b===c;}
 function copy(state:GameState):GameState {
-  return {...state,player:{...state.player},inventory:{...state.inventory},collected:[...state.collected],parts:state.parts.map(p=>({...p})),welds:state.welds.map(w=>({...w}))};
+  return {...state,player:{...state.player},inventory:{...state.inventory},collected:[...state.collected],parts:state.parts.map(p=>({...p})),welds:state.welds.map(w=>({...w})),vehicle:state.vehicle?{...state.vehicle,partIds:[...state.vehicle.partIds],detachedWheelIds:[...state.vehicle.detachedWheelIds]}:null};
 }
 const failed=(state:GameState,error:string):Result=>({ok:false,state,error});
 export function collectScrap(state:GameState,id:string,resource:Resource):GameState {
