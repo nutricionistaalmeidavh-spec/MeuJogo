@@ -1,5 +1,32 @@
-export type SaveData={x:number;z:number;inventory:number;collected:string[];savedAt:number};
-const DB='meujogo-saves',STORE='worlds';
-function openDb():Promise<IDBDatabase>{return new Promise((resolve,reject)=>{const req=indexedDB.open(DB,1);req.onupgradeneeded=()=>{req.result.createObjectStore(STORE);};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
-export async function loadGame():Promise<SaveData|null>{const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly');const req=tx.objectStore(STORE).get('world-1');req.onsuccess=()=>{db.close();resolve(req.result??null);};req.onerror=()=>{db.close();reject(req.error);};});}
-export async function saveGame(data:SaveData):Promise<void>{const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite');tx.objectStore(STORE).put(data,'world-1');tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>{db.close();reject(tx.error);};});}
+import type {GameState} from './game-state';
+const DB='meujogo-saves';
+const STORE='worlds';
+function openDb():Promise<IDBDatabase>{
+  return new Promise((resolve,reject)=>{
+    const request=indexedDB.open(DB,1);
+    request.onupgradeneeded=()=>{
+      const database=request.result;
+      if(!database.objectStoreNames.contains(STORE))database.createObjectStore(STORE);
+    };
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error);
+  });
+}
+export async function loadGame():Promise<unknown>{
+  const db=await openDb();
+  return new Promise((resolve,reject)=>{
+    const request=db.transaction(STORE,'readonly').objectStore(STORE).get('world-1');
+    request.onsuccess=()=>{db.close();resolve(request.result??null);};
+    request.onerror=()=>{db.close();reject(request.error);};
+  });
+}
+export async function saveGame(data:GameState):Promise<void>{
+  const db=await openDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).put(data,'world-1');
+    tx.oncomplete=()=>{db.close();resolve();};
+    tx.onerror=()=>{db.close();reject(tx.error);};
+    tx.onabort=()=>{db.close();reject(tx.error);};
+  });
+}
