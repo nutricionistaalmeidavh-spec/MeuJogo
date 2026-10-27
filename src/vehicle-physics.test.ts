@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {wheelSpring,motorForce,steerStrength,energyUsed,wheelGrip} from './vehicle-physics';
+import {wheelSpring,motorForce,steerStrength,energyUsed,wheelGrip} from './vehicle-dynamics';
 describe('vehicle dynamics: stable deterministic control forces',()=>{
  it('wheel suspension pushes upwards on compressed wheels and damps oscillations',()=>{
   expect(wheelSpring(.35,0)).toBeGreaterThan(0);
